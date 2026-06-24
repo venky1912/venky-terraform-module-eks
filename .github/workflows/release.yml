@@ -1,0 +1,93 @@
+name: Release Pipeline
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  ############################################################################
+  # Stage 1: Determine Version Bump
+  ############################################################################
+  determine-version:
+    name: "Stage 1: Determine Version"
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+      pr: ${{ steps.release.outputs.pr }}
+    steps:
+      - uses: googleapis/release-please-action@v5
+        id: release
+        with:
+          release-type: simple
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  ############################################################################
+  # Stage 2: Validate Release Artefacts
+  ############################################################################
+  validate-release:
+    name: "Stage 2: Validate Release"
+    needs: [determine-version]
+    if: needs.determine-version.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.determine-version.outputs.tag_name }}
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.15.7"
+
+      - name: Terraform Init
+        run: terraform init -backend=false
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Validate Examples
+        run: |
+          for dir in examples/*/; do
+            echo "=== Validating ${dir} ==="
+            cd "${dir}"
+            terraform init -backend=false
+            terraform validate
+            cd -
+          done
+
+  ############################################################################
+  # Stage 3: Generate Release Notes
+  ############################################################################
+  release-notes:
+    name: "Stage 3: Release Notes"
+    needs: [determine-version, validate-release]
+    if: needs.determine-version.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.determine-version.outputs.tag_name }}
+
+      - name: Update GitHub Release body
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.determine-version.outputs.tag_name }}
+          VERSION: ${{ needs.determine-version.outputs.version }}
+        run: |
+          gh release edit "${TAG}" --notes "## Module Usage
+
+          \`\`\`hcl
+          source = \"git::https://github.com/${{ github.repository }}.git?ref=${TAG}\"
+          \`\`\`
+
+          ## What's Changed
+          See [CHANGELOG.md](CHANGELOG.md) for full details.
+
+          ## Version
+          ${VERSION}
+          "

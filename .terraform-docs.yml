@@ -1,0 +1,20 @@
+formatter: markdown table
+
+header-from: docs/header.md
+
+sections:
+  show:
+    - header
+    - requirements
+    - providers
+    - inputs
+    - outputs
+    - resources
+
+output:
+  file: README.md
+  mode: replace
+
+sort:
+  enabled: true
+  by: required

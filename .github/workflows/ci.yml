@@ -1,0 +1,183 @@
+name: CI Pipeline
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  ############################################################################
+  # Stage 1: Validate PR Title (Conventional Commits)
+  ############################################################################
+  validate-pr-title:
+    name: "Stage 1: Validate PR Title"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            docs
+            chore
+            refactor
+            test
+            ci
+            perf
+            revert
+            breaking
+
+  ############################################################################
+  # Stage 2: Security Scan (Trivy + Checkov)
+  ############################################################################
+  security-scan:
+    name: "Stage 2: Security Scan"
+    needs: [validate-pr-title]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Trivy
+        run: |
+          sudo apt-get install -y wget apt-transport-https gnupg lsb-release
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+          echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update
+          sudo apt-get install -y trivy
+
+      - name: Trivy IaC Scan
+        run: trivy config --severity HIGH,CRITICAL --exit-code 1 .
+
+      - name: Checkov IaC Scan
+        run: |
+          pip install checkov
+          checkov -d . --framework terraform --quiet --skip-check CKV_AWS_111,CKV_AWS_356,CKV2_AWS_12,CKV_AWS_130,CKV2_AWS_5,CKV_AWS_158
+
+  ############################################################################
+  # Stage 3: TFLint
+  ############################################################################
+  tflint:
+    name: "Stage 3: TFLint"
+    needs: [security-scan]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install TFLint
+        run: |
+          curl -s https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash
+
+      - name: Init TFLint
+        run: tflint --init
+
+      - name: Run TFLint
+        run: tflint --format compact
+
+  ############################################################################
+  # Stage 4: Terraform Format
+  ############################################################################
+  terraform-fmt:
+    name: "Stage 4: Terraform Format"
+    needs: [tflint]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.15.7"
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive -diff
+
+  ############################################################################
+  # Stage 5: Terraform Validate
+  ############################################################################
+  terraform-validate:
+    name: "Stage 5: Terraform Validate"
+    needs: [terraform-fmt]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.15.7"
+
+      - name: Terraform Init
+        run: terraform init -backend=false
+
+      - name: Terraform Validate
+        run: terraform validate
+
+  ############################################################################
+  # Stage 6: Example Module Testing
+  ############################################################################
+  example-testing:
+    name: "Stage 6: Example Testing (${{ matrix.example }})"
+    needs: [terraform-validate]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        example: [complete]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.15.7"
+
+      - name: Terraform Init (example/${{ matrix.example }})
+        working-directory: examples/${{ matrix.example }}
+        run: terraform init -backend=false
+
+      - name: Terraform Validate (example/${{ matrix.example }})
+        working-directory: examples/${{ matrix.example }}
+        run: terraform validate
+
+  ############################################################################
+  # Stage 7: Docs Check
+  ############################################################################
+  docs-check:
+    name: "Stage 7: Docs Check"
+    needs: [example-testing]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install terraform-docs
+        run: |
+          curl -sSLo ./terraform-docs.tar.gz https://terraform-docs.io/dl/v0.24.0/terraform-docs-v0.24.0-$(uname)-amd64.tar.gz
+          tar -xzf terraform-docs.tar.gz
+          chmod +x terraform-docs
+          mv terraform-docs /usr/local/bin/
+
+      - name: Generate docs
+        run: terraform-docs .
+
+      - name: Check for diff
+        run: |
+          if [ -n "$(git diff --name-only)" ]; then
+            echo "❌ README.md is out of date. Run 'make docs' locally."
+            git diff
+            exit 1
+          fi
+          echo "✅ Docs are up to date"
+
+  ############################################################################
+  # Final Gate
+  ############################################################################
+  ci-passed:
+    name: "CI Passed"
+    needs: [docs-check]
+    runs-on: ubuntu-latest
+    steps:
+      - name: All stages passed
+        run: echo "✅ All CI stages passed"
