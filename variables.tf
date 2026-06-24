@@ -48,7 +48,7 @@ variable "cluster_endpoint_private_access" {
 variable "cluster_endpoint_public_access" {
   description = "Enable public access to cluster API endpoint"
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "cluster_endpoint_public_access_cidrs" {

@@ -13,7 +13,9 @@ module "eks" {
   cluster_type = "cloud"
 
   cluster_endpoint_private_access = true
-  cluster_endpoint_public_access  = true
+  cluster_endpoint_public_access  = false
+
+  cluster_encryption_kms_key_arn = "arn:aws:kms:eu-west-1:123456789012:key/example-key-id"
 
   cluster_enabled_log_types  = ["api", "audit", "authenticator"]
   cluster_log_retention_days = 30
