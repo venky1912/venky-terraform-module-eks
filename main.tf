@@ -90,12 +90,13 @@ resource "aws_eks_access_entry" "this" {
 
   cluster_name  = aws_eks_cluster.this.name
   principal_arn = each.value.principal_arn
+  type          = try(each.value.type, "STANDARD")
 
   tags = var.tags
 }
 
 resource "aws_eks_access_policy_association" "this" {
-  for_each = var.access_entries
+  for_each = { for k, v in var.access_entries : k => v if try(v.policy_arn, "") != "" }
 
   cluster_name  = aws_eks_cluster.this.name
   principal_arn = each.value.principal_arn
@@ -107,6 +108,22 @@ resource "aws_eks_access_policy_association" "this" {
   }
 
   depends_on = [aws_eks_access_entry.this]
+}
+
+################################################################################
+# Hybrid Node Access Entry
+################################################################################
+
+resource "aws_eks_access_entry" "hybrid_nodes" {
+  count = var.cluster_type == "hybrid" && var.hybrid_node_role_arn != null ? 1 : 0
+
+  cluster_name  = aws_eks_cluster.this.name
+  principal_arn = var.hybrid_node_role_arn
+  type          = "HYBRID_LINUX"
+
+  tags = merge(var.tags, {
+    Name = "${var.name}-hybrid-node-access"
+  })
 }
 
 ################################################################################

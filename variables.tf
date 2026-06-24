@@ -183,6 +183,7 @@ variable "access_entries" {
     {
       admin = {
         principal_arn = "arn:aws:iam::123456789:role/admin"
+        type          = "STANDARD"
         policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
         access_scope  = { type = "cluster" }
       }
@@ -190,11 +191,22 @@ variable "access_entries" {
   EOT
   type = map(object({
     principal_arn = string
-    policy_arn    = string
-    access_scope = object({
+    type          = optional(string, "STANDARD")
+    policy_arn    = optional(string, "")
+    access_scope = optional(object({
       type       = string
       namespaces = optional(list(string))
-    })
+    }), { type = "cluster" })
   }))
   default = {}
+}
+
+################################################################################
+# Hybrid Node Config
+################################################################################
+
+variable "hybrid_node_role_arn" {
+  description = "ARN of the hybrid node IAM role (from modules/hybrid-node-role). Creates HYBRID_LINUX access entry."
+  type        = string
+  default     = null
 }

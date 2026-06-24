@@ -69,3 +69,13 @@ output "cluster_log_group_arn" {
   description = "ARN of the CloudWatch log group for EKS control plane logs"
   value       = aws_cloudwatch_log_group.this.arn
 }
+
+
+################################################################################
+# Hybrid
+################################################################################
+
+output "hybrid_node_access_entry_arn" {
+  description = "ARN of the hybrid node access entry"
+  value       = try(aws_eks_access_entry.hybrid_nodes[0].access_entry_arn, null)
+}

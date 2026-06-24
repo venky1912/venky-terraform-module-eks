@@ -1,3 +1,7 @@
+################################################################################
+# Example: Cloud EKS Cluster
+################################################################################
+
 module "eks" {
   source = "../../"
 
@@ -37,3 +41,38 @@ module "eks" {
     ManagedBy   = "terraform"
   }
 }
+
+################################################################################
+# Example: Hybrid Node Role (use in hybrid boilerplate)
+################################################################################
+
+# module "hybrid_node_role" {
+#   source = "../../modules/hybrid-node-role"
+#
+#   cluster_name = "platform-hybrid"
+#
+#   tags = {
+#     Environment = "prod"
+#     ClusterType = "hybrid"
+#   }
+# }
+#
+# module "eks_hybrid" {
+#   source = "../../"
+#
+#   name             = "platform-hybrid"
+#   cluster_version  = "1.30"
+#   cluster_role_arn = "arn:aws:iam::123456789012:role/platform-hybrid-eks-cluster"
+#   subnet_ids       = ["subnet-111", "subnet-222"]
+#
+#   cluster_type = "hybrid"
+#
+#   remote_network_config = {
+#     remote_node_cidrs = ["172.16.0.0/16"]
+#     remote_pod_cidrs  = ["172.17.0.0/16"]
+#   }
+#
+#   hybrid_node_role_arn = module.hybrid_node_role.role_arn
+#
+#   tags = { Environment = "prod", ClusterType = "hybrid" }
+# }
